@@ -359,7 +359,7 @@ export default class Interpreter {
       this.getContestsForTemplate(matchedTemplate)
     )
 
-    return { matchedTemplate, mappedBallot, metadata, marks }
+    return { matchedTemplate, mappedBallot, metadata, marks, contests }
   }
 
   /**

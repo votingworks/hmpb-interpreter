@@ -14,12 +14,38 @@ export interface ContestShape {
 }
 
 export interface Options {
+  /**
+   * How many pixels in from the edge does the content appear?
+   */
   inset?: number
+  /**
+   * How many pixels separate contest boxes from each other?
+   */
   separation?: number
+
+  /**
+   * How many columns are there, and which ones should we scan?
+   */
   columns?: readonly boolean[]
+
+  /**
+   * How wide is a contest box expected to be?
+   */
   expectedWidth?: number
+
+  /**
+   * What is the minimum number of pixels tall a contest box should be?
+   */
   minExpectedHeight?: number
+
+  /**
+   * What is the maximum number of pixels tall a contest box should be?
+   */
   maxExpectedHeight?: number
+
+  /**
+   * How off do you want to allow each of these values to be?
+   */
   errorMargin?: number
 }
 
@@ -44,6 +70,7 @@ export default function* findContests(
     if (!column) {
       continue
     }
+    debug('begin scanning column %d', columnIndex)
 
     const columnMidX = Math.round(
       inset + columnIndex * (expectedWidth + separation) + expectedWidth / 2
@@ -55,8 +82,15 @@ export default function* findContests(
         yMax: inset - errorMargin,
       }) + inset
 
+    debug(
+      'starting to look for contest in column %d at x=%d,y=%d',
+      columnIndex,
+      columnMidX,
+      Math.max(expectedContestTop - errorMargin, 0)
+    )
+
     for (
-      let y = expectedContestTop - errorMargin;
+      let y = Math.max(expectedContestTop - errorMargin, 0);
       y < ballotImage.height - inset - minExpectedHeight + errorMargin;
       y++
     ) {
@@ -98,7 +132,9 @@ export default function* findContests(
         shape.bounds.width > expectedWidth + errorMargin
       ) {
         debug(
-          'skipping shape because it is the wrong size: bounds=%O, actual=%dˣ%d, min=%dˣ%d, max=%dˣ%d',
+          'skipping shape found at x=%d,y=%d because it is the wrong size: bounds=%O, actual=%dˣ%d, min=%dˣ%d, max=%dˣ%d',
+          columnMidX,
+          y,
           shape.bounds,
           shape.bounds.width,
           shape.bounds.height,

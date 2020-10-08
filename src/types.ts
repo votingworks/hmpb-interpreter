@@ -8,6 +8,7 @@ import {
   YesNoContest,
   YesNoOption,
 } from '@votingworks/ballot-encoder'
+import { ContestShape } from './hmpb/findContests'
 import { TargetShape } from './hmpb/findTargets'
 
 export interface Point {
@@ -70,6 +71,7 @@ export interface Interpreted {
   matchedTemplate: BallotPageLayout
   mappedBallot: ImageData
   metadata: BallotPageMetadata
+  contests: ContestShape[]
   marks: BallotMark[]
   ballot: CompletedBallot
 }
@@ -78,6 +80,7 @@ export interface FindMarksResult {
   matchedTemplate: BallotPageLayout
   mappedBallot: ImageData
   metadata: BallotPageMetadata
+  contests: ContestShape[]
   marks: BallotMark[]
 }
 
