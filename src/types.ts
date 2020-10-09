@@ -35,6 +35,23 @@ export interface Size {
   height: number
 }
 
+// export type Transform3d = [
+//   [number, number, number],
+//   [number, number, number],
+//   [number, number, number]
+// ]
+export type Transform3d = [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number
+]
+
 export interface BallotImage {
   imageData: ImageData
   metadata: BallotPageMetadata

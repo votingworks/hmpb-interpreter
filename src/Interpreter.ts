@@ -30,12 +30,15 @@ import {
   BallotPageLayout,
   BallotPageMetadata,
   BallotYesNoTargetMark,
+  Corners,
   DetectQRCode,
   FindMarksResult,
   Interpreted,
   Offset,
   Point,
+  Rect,
   Size,
+  Transform3d,
 } from './types'
 import { binarize, PIXEL_BLACK, PIXEL_WHITE } from './utils/binarize'
 import crop from './utils/crop'
@@ -353,13 +356,51 @@ export default class Interpreter {
     const matchedTemplate = defined(
       this.getTemplate({ locales, ballotStyleId, precinctId, pageNumber })
     )
-    const [mappedBallot, marks] = this.getMarksForBallot(
+    const { mappedBallot, marks, transform } = this.getMarksForBallot(
       ballotLayout,
       matchedTemplate,
       this.getContestsForTemplate(matchedTemplate)
     )
 
-    return { matchedTemplate, mappedBallot, metadata, marks, contests }
+    function applyTransformToPoint(
+      transform: Transform3d,
+      point: Point
+    ): Point {
+      return {
+        x: Math.round(point.x * transform[0] + point.y * transform[1]),
+        y: Math.round(point.x * transform[3] + point.y * transform[4]),
+      }
+    }
+
+    function applyTranformToRect(transform: Transform3d, rect: Rect): Rect {
+      const tl = applyTransformToPoint(transform, { x: rect.x, y: rect.y })
+      const br = applyTransformToPoint(transform, {
+        x: rect.x + rect.width,
+        y: rect.y + rect.height,
+      })
+
+      const transformed = {
+        x: tl.x,
+        y: tl.y,
+        width: br.x - tl.x,
+        height: br.y - tl.y,
+      }
+      console.log({ transform, transformed })
+      return transformed
+    }
+
+    return {
+      matchedTemplate,
+      mappedBallot,
+      metadata,
+      marks,
+      contests: contests.map((contest) => ({
+        bounds: applyTranformToRect(transform, contest.bounds),
+        corners: contest.corners.map((corner) =>
+          applyTransformToPoint(transform, corner)
+        ) as Corners,
+      })),
+    }
   }
 
   /**
@@ -452,7 +493,7 @@ export default class Interpreter {
     ballotLayout: BallotPageLayout,
     template: BallotPageLayout,
     contests: Contests
-  ): [ImageData, BallotMark[]] {
+  ): { mappedBallot: ImageData; marks: BallotMark[]; transform: Transform3d } {
     assert.equal(
       template.contests.length,
       contests.length,
@@ -465,7 +506,10 @@ export default class Interpreter {
       `ballot and election definition have different numbers of contests (${ballotLayout.contests.length} vs ${contests.length}); maybe the ballot is from an old version of the election definition?`
     )
 
-    const mappedBallot = this.mapBallotOntoTemplate(ballotLayout, template)
+    const { mappedImage: mappedBallot, transform } = this.mapBallotOntoTemplate(
+      ballotLayout,
+      template
+    )
     const marks: BallotMark[] = []
 
     const addCandidateMark = (
@@ -602,7 +646,7 @@ export default class Interpreter {
       }
     }
 
-    return [mappedBallot, marks]
+    return { mappedBallot, marks, transform }
   }
 
   private targetMarkScore(
@@ -679,38 +723,73 @@ export default class Interpreter {
     mappedSize: Size,
     fromPoints: Point[],
     toPoints: Point[]
-  ): ImageData {
+  ): {
+    mappedImage: ImageData
+    transform: Transform3d
+  } {
     const mappedImage = new jsfeat.matrix_t(
       mappedSize.width,
       mappedSize.height,
       jsfeat.U8C1_t
     )
+    const transform = new jsfeat.matrix_t(3, 3, jsfeat.F32_t | jsfeat.C1_t)
+    const homography = new jsfeat.motion_model.homography2d()
 
     if (fromPoints.length === 0) {
       // Nothing to guide mapping, so all we actually want to do is resize.
       // Note also that jsfeat generates a blank image if we try to do a warp
       // perspective with a homography containing no points.
-      jsfeat.imgproc.resample(
-        imageMat,
-        mappedImage,
-        mappedSize.width,
-        mappedSize.height
+      homography.run(
+        [
+          { x: 0, y: 0 },
+          { x: imageMat.cols, y: imageMat.rows },
+        ],
+        [
+          { x: 0, y: 0 },
+          { x: mappedSize.width, y: mappedSize.height },
+        ],
+        transform,
+        2
       )
+      // jsfeat.imgproc.resample(
+      //   imageMat,
+      //   mappedImage,
+      //   mappedSize.width,
+      //   mappedSize.height
+      // )
     } else {
-      const homography = new jsfeat.motion_model.homography2d()
-      const transform = new jsfeat.matrix_t(3, 3, jsfeat.F32_t | jsfeat.C1_t)
-
       homography.run(toPoints, fromPoints, transform, toPoints.length)
-      jsfeat.imgproc.warp_perspective(imageMat, mappedImage, transform, 255)
     }
 
-    return matToImageData(mappedImage)
+    // var m00=td[0],m01=td[1],m02=td[2],
+    //     m10=td[3],m11=td[4],m12=td[5],
+    //     m20=td[6],m21=td[7],m22=td[8];
+    jsfeat.imgproc.warp_perspective(imageMat, mappedImage, transform, 255)
+    const inverted = new jsfeat.matrix_t(3, 3, jsfeat.F32_t | jsfeat.C1_t)
+    jsfeat.matmath.invert_3x3(transform, inverted)
+    return {
+      mappedImage: matToImageData(mappedImage),
+      transform: [
+        inverted.data[0],
+        inverted.data[1],
+        inverted.data[2],
+        inverted.data[3],
+        inverted.data[4],
+        inverted.data[5],
+        inverted.data[6],
+        inverted.data[7],
+        inverted.data[8],
+      ],
+    }
   }
 
   private mapBallotOntoTemplate(
     ballot: BallotPageLayout,
     template: BallotPageLayout
-  ): ImageData {
+  ): {
+    mappedImage: ImageData
+    transform: Transform3d
+  } {
     const ballotMat = readGrayscaleImage(ballot.ballotImage.imageData)
     const templateSize = {
       width: template.ballotImage.imageData.width,
