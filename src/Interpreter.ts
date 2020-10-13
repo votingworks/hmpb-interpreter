@@ -16,6 +16,7 @@ import { strict as assert } from 'assert'
 import makeDebug from 'debug'
 import * as jsfeat from 'jsfeat'
 import { v4 as uuid } from 'uuid'
+import { writeImageToFile } from '../test/utils'
 import getVotesFromMarks from './getVotesFromMarks'
 import findContestOptions from './hmpb/findContestOptions'
 import findContests, { ContestShape } from './hmpb/findContests'
@@ -619,26 +620,33 @@ export default class Interpreter {
       zeroScoreThreshold
     )
 
+    const compareInset = 1
+    const compareBounds: Rect = {
+      x: target.inner.x - compareInset,
+      y: target.inner.y - compareInset,
+      width: target.inner.width - compareInset * 2,
+      height: target.inner.height - compareInset * 2,
+    }
     const offsetAndScore = new Map<Offset, number>()
     const templateTarget = outline(crop(template, target.bounds))
-    const templateTargetInner = outline(crop(template, target.inner))
+    const templateTargetInner = outline(crop(template, compareBounds))
     const templatePixelCountAvailableToFill = countPixels(templateTargetInner, {
       color: PIXEL_WHITE,
     })
 
     for (const { x, y } of offsets()) {
       const offsetTargetInner: Rect = {
-        ...target.inner,
-        x: target.inner.x + x,
-        y: target.inner.y + y,
+        ...compareBounds,
+        x: compareBounds.x + x,
+        y: compareBounds.y + y,
       }
       const diffImageInner = diff(
         templateTarget,
         ballot,
         {
-          ...target.inner,
-          x: target.inner.x - target.bounds.x,
-          y: target.inner.y - target.bounds.y,
+          ...compareBounds,
+          x: compareBounds.x - target.bounds.x,
+          y: compareBounds.y - target.bounds.y,
         },
         offsetTargetInner
       )
@@ -647,6 +655,10 @@ export default class Interpreter {
       })
       const score =
         ballotTargetInnerNewBlackPixelCount / templatePixelCountAvailableToFill
+      writeImageToFile(
+        diffImageInner,
+        `debug_diffImageInner_${compareBounds.x}_${compareBounds.y}_${compareBounds.width}_${compareBounds.height}_offset_${x}_${y}_score_${score}.png`
+      )
       if (score <= zeroScoreThreshold) {
         debug(
           'returning early at (x=%d, y=%d) since score (%d) is ≤ zero threshold (%d)',
