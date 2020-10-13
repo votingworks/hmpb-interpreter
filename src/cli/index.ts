@@ -1,14 +1,17 @@
-import {
-  default as runInterpret,
-  Options as InterpretOptions,
-  parseOptions as parseInterpretOptions,
-} from './commands/interpret'
-import {
-  default as runHelp,
-  Options as HelpOptions,
-  parseOptions as parseHelpOptions,
-  printHelp,
-} from './commands/help'
+import * as helpCommand from './commands/help'
+import * as interpretCommand from './commands/interpret'
+import * as layoutCommand from './commands/layout'
+import * as matchTemplateCommand from './commands/match-template'
+
+export interface Command<O> {
+  name: string
+  parseOptions(args: readonly string[]): Promise<O>
+  run(
+    options: O,
+    stdin: typeof process.stdin,
+    stdout: typeof process.stdout
+  ): Promise<number>
+}
 
 export class OptionParseError extends Error {}
 
@@ -17,14 +20,28 @@ export interface GlobalOptions {
   commandArgs: readonly string[]
 }
 
+export const commands = [
+  helpCommand,
+  interpretCommand,
+  layoutCommand,
+  matchTemplateCommand,
+] as const
 export type Options =
   | {
-      command: 'interpret'
-      options: InterpretOptions
+      command: typeof helpCommand.name
+      options: helpCommand.Options
     }
   | {
-      command: 'help'
-      options: HelpOptions
+      command: typeof interpretCommand.name
+      options: interpretCommand.Options
+    }
+  | {
+      command: typeof layoutCommand.name
+      options: layoutCommand.Options
+    }
+  | {
+      command: typeof matchTemplateCommand.name
+      options: matchTemplateCommand.Options
     }
 
 export function parseGlobalOptions(args: readonly string[]): GlobalOptions {
@@ -63,22 +80,34 @@ export async function parseOptions(args: readonly string[]): Promise<Options> {
 
   if (help) {
     return {
-      command: 'help',
-      options: await parseHelpOptions(commandArgs),
+      command: helpCommand.name,
+      options: await helpCommand.parseOptions(commandArgs),
     }
   }
 
   switch (commandArgs[0]) {
-    case 'interpret':
-      return {
-        command: commandArgs[0],
-        options: await parseInterpretOptions(args.slice(1)),
-      }
-
     case 'help':
       return {
         command: commandArgs[0],
-        options: await parseHelpOptions(args.slice(1)),
+        options: await helpCommand.parseOptions(args.slice(1)),
+      }
+
+    case 'interpret':
+      return {
+        command: commandArgs[0],
+        options: await interpretCommand.parseOptions(args.slice(1)),
+      }
+
+    case 'layout':
+      return {
+        command: commandArgs[0],
+        options: await layoutCommand.parseOptions(args.slice(1)),
+      }
+
+    case 'match-template':
+      return {
+        command: commandArgs[0],
+        options: await matchTemplateCommand.parseOptions(args.slice(1)),
       }
 
     default:
@@ -96,19 +125,26 @@ export default async function main(
     const commandOptions = await parseOptions(args.slice(2))
 
     switch (commandOptions.command) {
-      case 'interpret':
-        return runInterpret(commandOptions.options, stdin, stdout)
-
       case 'help':
-        return runHelp(commandOptions.options, stdin, stdout)
+        return await helpCommand.run(commandOptions.options, stdin, stdout)
 
-      default:
-        return 127
+      case 'interpret':
+        return await interpretCommand.run(commandOptions.options, stdin, stdout)
+
+      case 'layout':
+        return await layoutCommand.run(commandOptions.options, stdin, stdout)
+
+      case 'match-template':
+        return await matchTemplateCommand.run(
+          commandOptions.options,
+          stdin,
+          stdout
+        )
     }
   } catch (error) {
     if (error instanceof OptionParseError) {
       stderr.write(`error: ${error.message}\n`)
-      printHelp(stderr)
+      helpCommand.printHelp(stderr)
       return -1
     } else {
       throw error

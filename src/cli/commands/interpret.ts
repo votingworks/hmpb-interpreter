@@ -8,6 +8,8 @@ import { DEFAULT_MARK_SCORE_VOTE_THRESHOLD } from '../../Interpreter'
 import { Input, Interpreted } from '../../types'
 import { readImageData } from '../../utils/readImageData'
 
+export const name = 'interpret'
+
 export enum OutputFormat {
   JSON = 'json',
   Table = 'table',
@@ -15,6 +17,7 @@ export enum OutputFormat {
 
 export interface Options {
   election: Election
+  testMode: boolean
   autoInputs: readonly Input[]
   templateInputs: readonly Input[]
   ballotInputs: readonly Input[]
@@ -37,6 +40,7 @@ function makeInputFromBallotArgument(arg: string): Input {
 
 export async function parseOptions(args: readonly string[]): Promise<Options> {
   let election: Election | undefined
+  let testMode = false
   const autoInputs: Input[] = []
   const templateInputs: Input[] = []
   const ballotInputs: Input[] = []
@@ -112,6 +116,13 @@ export async function parseOptions(args: readonly string[]): Promise<Options> {
         break
       }
 
+      case '-T':
+      case '--test-mode':
+      case '--no-test-mode': {
+        testMode = arg !== '--no-test-mode'
+        break
+      }
+
       default: {
         if (arg.startsWith('-')) {
           throw new OptionParseError(`Unknown option: ${arg}`)
@@ -129,6 +140,7 @@ export async function parseOptions(args: readonly string[]): Promise<Options> {
 
   return {
     election,
+    testMode,
     autoInputs,
     templateInputs,
     ballotInputs,
@@ -137,13 +149,14 @@ export async function parseOptions(args: readonly string[]): Promise<Options> {
   }
 }
 
-export default async function run(
+export async function run(
   options: Options,
   stdin: typeof process.stdin,
   stdout: typeof process.stdout
 ): Promise<number> {
   const interpreter = new Interpreter({
     election: options.election,
+    testMode: options.testMode,
     markScoreVoteThreshold: options.markScoreVoteThreshold,
   })
   const ballotInputs = [...options.ballotInputs]

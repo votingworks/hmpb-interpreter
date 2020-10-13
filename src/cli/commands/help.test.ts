@@ -1,4 +1,4 @@
-import run, { parseOptions } from './help'
+import { run, parseOptions } from './help'
 import { Readable } from 'stream'
 import MemoryStream from 'memorystream'
 
