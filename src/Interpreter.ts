@@ -736,7 +736,9 @@ export default class Interpreter {
       jsfeat.imgproc.warp_perspective(imageMat, mappedImage, transform, 255)
     }
 
-    return matToImageData(mappedImage)
+    const mapped = matToImageData(mappedImage)
+    binarize(mapped)
+    return mapped
   }
 
   private mapBallotOntoTemplate(
